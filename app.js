@@ -2086,7 +2086,56 @@ async function copyEmailBody() {
   try { await navigator.clipboard.writeText(shoppingText()); showToast('Email body copied to the clipboard.'); }
   catch { showToast('Copy failed — use Download HTML instead.'); }
 }
-function emailShopping() { renderEmailPreview(); prepareMailAppLink(); openModal('emailPreviewModal'); }
+async function sendWeekEmail() {
+  const recipient = $('emailRecipient').value.trim().replace(/[\r\n]/g, '');
+  const button = $('sendEmail');
+  const status = $('emailSendStatus');
+  if (!recipient) {
+    $('emailRecipient').focus();
+    status.textContent = 'Enter an email address first.';
+    status.classList.add('error');
+    return;
+  }
+  if (LOCAL_PREVIEW || !supabaseClient || !currentUser) {
+    status.textContent = 'Sign in on the hosted website to send email directly.';
+    status.classList.add('error');
+    showToast('Direct email is available on the hosted website.');
+    return;
+  }
+  button.disabled = true;
+  status.classList.remove('error');
+  status.textContent = 'Sending the week…';
+  try {
+    const { error } = await supabaseClient.functions.invoke('send-week-email', {
+      body: {
+        recipient,
+        subject: 'Ladle · Week of August 3–9',
+        html: generateStandaloneEmail(),
+        text: compactMailText('full')
+      }
+    });
+    if (error) {
+      let message = error.message || 'The email could not be sent.';
+      if (error.context?.json) {
+        try {
+          const payload = await error.context.json();
+          if (payload?.error) message = payload.error;
+        } catch {}
+      }
+      throw new Error(message);
+    }
+    status.textContent = `Sent to ${recipient}.`;
+    showToast(`Meal plan emailed to ${recipient}.`);
+  } catch (error) {
+    status.textContent = error.message || 'The email could not be sent.';
+    status.classList.add('error');
+    showToast('The meal plan could not be emailed.');
+  } finally {
+    button.disabled = false;
+    button.innerHTML = 'Send email <span>→</span>';
+  }
+}
+function emailShopping() { $('emailSendStatus').textContent = ''; $('emailSendStatus').classList.remove('error'); renderEmailPreview(); prepareMailAppLink(); openModal('emailPreviewModal'); }
 
 document.addEventListener('click', event => {
   const nav = event.target.closest('[data-view]'); if (nav) { activeView = nav.dataset.view; render(); return; }
@@ -2120,6 +2169,7 @@ $('emailShopping').addEventListener('click', emailShopping);
 $('downloadEmailHtml').addEventListener('click', downloadEmailHtml);
 $('downloadEmailEml').addEventListener('click', downloadEmailEml);
 $('openMailApp').addEventListener('click', openMailApp);
+$('sendEmail').addEventListener('click', sendWeekEmail);
 $('copyEmailBody').addEventListener('click', copyEmailBody);
 $('authForm').addEventListener('submit', requestMagicLink);
 $('profileButton').addEventListener('click', signOutUser);
