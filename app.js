@@ -100,6 +100,14 @@ function load(key, fallback) { try { const value = localStorage.getItem(key); re
 if (recipesNeedCleanup) save(STORAGE.recipes, recipes);
 function getRecipe(id) { return recipes.find(recipe => recipe.id === id); }
 function canManageRecipes() { return LOCAL_PREVIEW || Boolean(currentUser && ownerUserId && currentUser.id === ownerUserId); }
+async function refreshOwnerAccess() {
+  if (!currentUser || !supabaseClient) return;
+  const { data, error } = await supabaseClient.from('app_owners').select('user_id').eq('id', true).maybeSingle();
+  if (error) return;
+  ownerUserId = data?.user_id || '';
+  renderNav();
+  renderLibrary();
+}
 function openRecipeImageDB() {
   if (!window.indexedDB) return Promise.resolve(null);
   if (window.__ladleRecipeImageDB) return window.__ladleRecipeImageDB;
@@ -452,8 +460,9 @@ function setAuthVisibility(authenticated) {
 async function handleAuthSession(session) {
   currentUser = session?.user || null;
   setAuthVisibility(!!currentUser);
-  if (!currentUser) return;
+  if (!currentUser) { ownerUserId = ''; return; }
   try {
+    await refreshOwnerAccess();
     await hydrateRecipeImages();
     await bootstrapCloud();
   } catch (error) {
