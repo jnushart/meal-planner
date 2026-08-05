@@ -2096,6 +2096,7 @@ async function sendWeekEmail() {
   const recipient = $('emailRecipient').value.trim().replace(/[\r\n]/g, '');
   const button = $('sendEmail');
   const status = $('emailSendStatus');
+  if (!button || !status) return;
   if (!recipient) {
     $('emailRecipient').focus();
     status.textContent = 'Enter an email address first.';
@@ -2141,7 +2142,7 @@ async function sendWeekEmail() {
     button.innerHTML = 'Send email <span>→</span>';
   }
 }
-function emailShopping() { $('emailSendStatus').textContent = ''; $('emailSendStatus').classList.remove('error'); renderEmailPreview(); prepareMailAppLink(); openModal('emailPreviewModal'); }
+function emailShopping() { const status = $('emailSendStatus'); if (status) { status.textContent = ''; status.classList.remove('error'); } renderEmailPreview(); prepareMailAppLink(); openModal('emailPreviewModal'); }
 
 document.addEventListener('click', event => {
   const nav = event.target.closest('[data-view]'); if (nav) { activeView = nav.dataset.view; render(); return; }
@@ -2175,7 +2176,7 @@ $('emailShopping').addEventListener('click', emailShopping);
 $('downloadEmailHtml').addEventListener('click', downloadEmailHtml);
 $('downloadEmailEml').addEventListener('click', downloadEmailEml);
 $('openMailApp').addEventListener('click', openMailApp);
-$('sendEmail').addEventListener('click', sendWeekEmail);
+$('sendEmail')?.addEventListener('click', sendWeekEmail);
 $('copyEmailBody').addEventListener('click', copyEmailBody);
 $('authForm').addEventListener('submit', requestMagicLink);
 $('profileButton').addEventListener('click', signOutUser);
