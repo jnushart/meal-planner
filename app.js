@@ -16,6 +16,8 @@ let ownerUserId = '';
 let cloudReady = false;
 let cloudSyncTimer = 0;
 let passwordRecoveryRequested = false;
+let passwordRecoveryModalShown = false;
+const PASSWORD_RECOVERY_KEY = 'ladle-password-recovery-pending-v1';
 const PDF_PARSER_VERSION = 8;
 const VOLUME_ONE_CLEANUP_KEY = 'ladle-remove-magnolia-volume-1-v3';
 function isMagnoliaVolumeOneRecipe(recipe) {
@@ -479,8 +481,10 @@ async function handleAuthSession(session, authEvent = '') {
     await hydrateRecipeImages();
     await bootstrapCloud();
     bindAccountEmail();
-    if (authEvent === 'PASSWORD_RECOVERY' || passwordRecoveryRequested) {
+    if ((authEvent === 'PASSWORD_RECOVERY' || passwordRecoveryRequested || localStorage.getItem(PASSWORD_RECOVERY_KEY) === '1') && !passwordRecoveryModalShown) {
+      passwordRecoveryModalShown = true;
       passwordRecoveryRequested = false;
+      localStorage.removeItem(PASSWORD_RECOVERY_KEY);
       $('passwordForm')?.reset();
       const passwordStatus = $('passwordStatus');
       if (passwordStatus) { passwordStatus.textContent = ''; passwordStatus.classList.remove('error'); }
@@ -513,6 +517,8 @@ async function requestPasswordReset() {
   const redirectTo = window.location.protocol === 'http:' || window.location.protocol === 'https:' ? window.location.href.split('#')[0] : undefined;
   const { error } = await supabaseClient.auth.resetPasswordForEmail(email, redirectTo ? { redirectTo } : undefined);
   if (error) { status.textContent = error.message; status.classList.add('error'); return; }
+  passwordRecoveryModalShown = false;
+  localStorage.setItem(PASSWORD_RECOVERY_KEY, '1');
   status.textContent = 'Check your email. The link will let you choose a password.';
 }
 async function updatePassword(event) {
@@ -527,21 +533,23 @@ async function updatePassword(event) {
   status.textContent = 'Saving your password…';
   const { error } = await supabaseClient.auth.updateUser({ password });
   if (error) { status.textContent = error.message; status.classList.add('error'); return; }
+  localStorage.removeItem(PASSWORD_RECOVERY_KEY);
   $('passwordForm').reset();
   closeModal('passwordModal');
   showToast('Password saved. You can use it next time.');
 }
 async function initializeCloudAuth() {
   if (LOCAL_PREVIEW || !supabaseClient) { setAuthVisibility(false); return; }
-  passwordRecoveryRequested = window.location.hash.includes('type=recovery');
-  const { data: { session } } = await supabaseClient.auth.getSession();
-  await handleAuthSession(session);
+  passwordRecoveryRequested = window.location.hash.includes('type=recovery') || localStorage.getItem(PASSWORD_RECOVERY_KEY) === '1';
   supabaseClient.auth.onAuthStateChange((event, nextSession) => {
     if (event === 'PASSWORD_RECOVERY') passwordRecoveryRequested = true;
     setTimeout(() => handleAuthSession(nextSession, event), 0);
   });
+  const { data: { session } } = await supabaseClient.auth.getSession();
+  await handleAuthSession(session, passwordRecoveryRequested ? 'PASSWORD_RECOVERY' : '');
 }
 async function signOutUser() {
+  passwordRecoveryModalShown = false;
   if (supabaseClient && currentUser) await supabaseClient.auth.signOut();
 }
 function safeImageSource(value, baseUrl = '') {
