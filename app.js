@@ -491,20 +491,28 @@ function openPasswordSetupModal() {
   if (passwordStatus) { passwordStatus.textContent = ''; passwordStatus.classList.remove('error'); }
   openModal('passwordModal');
 }
+function passwordRecoveryIsPending(authEvent = '') {
+  return authEvent === 'PASSWORD_RECOVERY'
+    || passwordRecoveryRequested
+    || passwordRecoverySignalInUrl()
+    || localStorage.getItem(PASSWORD_RECOVERY_KEY) === '1';
+}
+function schedulePasswordSetupModal(authEvent = '') {
+  if (!currentUser || passwordRecoveryModalShown || !passwordRecoveryIsPending(authEvent)) return;
+  passwordRecoveryModalShown = true;
+  passwordRecoveryRequested = false;
+  setTimeout(openPasswordSetupModal, 0);
+}
 async function handleAuthSession(session, authEvent = '') {
   currentUser = session?.user || null;
   setAuthVisibility(!!currentUser);
   if (!currentUser) { ownerUserId = ''; return; }
+  schedulePasswordSetupModal(authEvent);
   try {
     await refreshOwnerAccess();
     await hydrateRecipeImages();
     await bootstrapCloud();
     bindAccountEmail();
-    if ((authEvent === 'PASSWORD_RECOVERY' || passwordRecoveryRequested || passwordRecoverySignalInUrl() || localStorage.getItem(PASSWORD_RECOVERY_KEY) === '1') && !passwordRecoveryModalShown) {
-      passwordRecoveryModalShown = true;
-      passwordRecoveryRequested = false;
-      setTimeout(openPasswordSetupModal, 0);
-    }
   } catch (error) {
     $('authStatus').textContent = `Cloud connection failed: ${error.message || 'Please try again.'}`;
     $('authStatus').classList.add('error');
