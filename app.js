@@ -811,6 +811,12 @@ async function importRecipeFromLink() {
 }
 async function fetchRecipeHTML(url) {
   const encodedUrl = encodeURIComponent(url);
+  if (location.protocol !== 'file:' && supabaseClient && currentUser) {
+    try {
+      const { data, error } = await supabaseClient.functions.invoke('import-recipe', { body: { url } });
+      if (!error && data?.html) return data.html;
+    } catch {}
+  }
   const endpoints = location.protocol === 'file:' ? [`http://127.0.0.1:8000/api/import?url=${encodedUrl}`, url] : [`/api/import?url=${encodedUrl}`, url];
   for (const endpoint of endpoints) {
     try {
