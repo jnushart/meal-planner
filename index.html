@@ -1,0 +1,181 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="theme-color" content="#f7f4ed" />
+  <title>Ladle — Weekly meal planning</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Playfair+Display:wght@600;700&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <div class="auth-gate hidden" id="authGate">
+    <div class="auth-card">
+      <div class="brand-lockup auth-brand"><div class="brand-mark" aria-hidden="true">✣</div><div><div class="brand-name">Ladle</div><div class="brand-caption">your week, served</div></div></div>
+      <div class="modal-kicker">PRIVATE KITCHEN</div>
+      <h1>Welcome back.</h1>
+      <p>Enter an invited email address and we’ll send you a secure sign-in link.</p>
+      <form id="authForm" class="auth-form">
+        <label>Email address<input id="authEmail" type="email" autocomplete="email" placeholder="you@example.com" required /></label>
+        <button class="button button-dark" type="submit">Send sign-in link <span>→</span></button>
+      </form>
+      <div class="auth-status" id="authStatus" role="status"></div>
+    </div>
+  </div>
+
+  <div class="app-shell" id="appShell">
+    <aside class="sidebar">
+      <div class="brand-lockup">
+        <div class="brand-mark" aria-hidden="true">✣</div>
+        <div>
+          <div class="brand-name">Ladle</div>
+          <div class="brand-caption">your week, served</div>
+        </div>
+      </div>
+
+      <nav class="main-nav" aria-label="Main navigation">
+        <button class="nav-item active" data-view="library"><span class="nav-icon">▦</span> Recipe library <span class="nav-count" id="recipeCount">0</span></button>
+        <button class="nav-item" data-view="planner"><span class="nav-icon">◷</span> Week plan</button>
+        <button class="nav-item" data-view="shopping"><span class="nav-icon">✓</span> Shopping list <span class="nav-dot" id="shoppingDot"></span></button>
+      </nav>
+
+      <div class="sidebar-bottom">
+        <div class="sidebar-tip">
+          <div class="tip-kicker">A little ritual</div>
+          <div class="tip-copy">Pick a few favorites. Let the rest be a surprise.</div>
+          <div class="tip-orbit">✦</div>
+        </div>
+        <div class="profile-chip">
+          <div class="avatar">J</div>
+          <div><strong>Our kitchen</strong><span>Private collection</span></div>
+          <button class="icon-button" id="resetDemo" title="Clear recipe library" aria-label="Clear recipe library">↺</button>
+        </div>
+      </div>
+    </aside>
+
+    <main class="main-content">
+      <header class="topbar">
+        <div>
+          <div class="eyebrow" id="dateEyebrow">MONDAY, AUGUST 3</div>
+          <h1 id="pageTitle">What's for dinner?</h1>
+          <p class="page-subtitle" id="pageSubtitle">A calmer way to choose the good stuff.</p>
+        </div>
+        <div class="topbar-actions">
+          <button class="button button-ghost" id="openImport"><span>＋</span> Add recipe</button>
+          <button class="avatar avatar-large" id="profileButton" aria-label="Your profile">J</button>
+        </div>
+      </header>
+
+      <section class="view active" id="libraryView" data-view-panel="library">
+        <div class="library-hero">
+          <div class="hero-copy">
+            <div class="hero-kicker">THE COLLECTION</div>
+            <h2>Recipes worth<br /><em>coming back to.</em></h2>
+            <p>Keep the recipes you love close, whether they came from a beloved book or a late-night scroll.</p>
+            <div class="hero-actions"><button class="button button-dark" data-view-jump="planner">Plan this week <span>→</span></button><button class="text-button" id="openCookbookScan">Import a cookbook PDF <span>↗</span></button></div>
+          </div>
+          <div class="hero-visual" aria-hidden="true">
+            <div class="hero-arch"></div>
+            <div class="hero-plate plate-back"></div>
+            <div class="hero-plate plate-front"><span>✦</span></div>
+            <div class="hero-bowl"><span>◒</span></div>
+            <div class="hero-leaf leaf-one">⌁</div><div class="hero-leaf leaf-two">⌁</div>
+          </div>
+          <div class="hero-stamp"><strong>EST.</strong><span>AT HOME</span><b>2026</b></div>
+        </div>
+
+        <div class="section-heading library-heading">
+          <div><div class="eyebrow">ALL RECIPES</div><h2>Choose your next favorite</h2></div>
+          <div class="library-stats"><span><strong id="libraryTotal">0</strong> recipes</span><span class="stat-divider"></span><span><strong id="libraryRated">0</strong> rated 4+</span></div>
+        </div>
+
+        <div class="filter-row">
+          <label class="search-box"><span>⌕</span><input id="librarySearch" type="search" placeholder="Search title, ingredient, or source" autocomplete="off" /></label>
+          <select class="select-control" id="sourceFilter"><option value="all">All sources</option><option value="cookbook">Cookbook scans</option><option value="internet">From the internet</option><option value="manual">Typed by us</option></select>
+          <select class="select-control" id="ratingFilter"><option value="all">Any rating</option><option value="4">4+ stars</option><option value="5">5 stars</option><option value="unrated">Unrated</option></select>
+          <button class="filter-clear" id="clearFilters">Clear</button>
+        </div>
+
+        <div class="recipe-grid" id="recipeGrid"></div>
+        <div class="empty-state hidden" id="libraryEmpty"><div class="empty-illustration">✣</div><h3>No recipes yet</h3><p>Add a recipe from a URL, or start typing up a favorite from one of her books.</p><button class="button button-dark" id="emptyAddRecipe">Add the first recipe</button></div>
+      </section>
+
+      <section class="view" id="plannerView" data-view-panel="planner">
+        <div class="planner-intro">
+          <div><div class="eyebrow">WEEK OF AUGUST 3–9</div><h2>A little structure.<br /><em>Lots of room for cravings.</em></h2></div>
+          <div class="planner-meta"><div class="planner-progress"><div class="progress-ring"><span id="lockedCount">0</span><small>locked</small></div><div><strong id="plannerSummary">0 of 5 meals picked</strong><span>Lock the keepers, then re-roll the rest.</span></div></div></div>
+        </div>
+
+        <div class="planner-controls">
+          <div class="meal-count-control"><span>Plan for</span><select class="select-control compact" id="mealCount"><option value="3">3 meals</option><option value="4">4 meals</option><option value="5" selected>5 meals</option></select></div>
+          <div class="planner-control-actions"><button class="button button-light" id="openPlannerSearch">＋ Add manually</button><button class="button button-dark" id="randomizeMeals"><span>✦</span> Randomize unlocked</button></div>
+        </div>
+
+        <div class="week-grid" id="weekGrid"></div>
+
+        <div class="planner-search-panel hidden" id="plannerSearchPanel">
+          <div class="search-panel-head"><div><div class="eyebrow">MANUAL PICK</div><h3>Search the collection</h3></div><button class="icon-button" id="closePlannerSearch" aria-label="Close search">×</button></div>
+          <label class="search-box search-box-wide"><span>⌕</span><input id="plannerSearch" type="search" placeholder="Try “pasta”, “chicken”, or a source" autocomplete="off" /></label>
+          <div class="planner-search-results" id="plannerSearchResults"></div>
+        </div>
+
+        <div class="planner-note"><span>✣</span><p><strong>Good to know:</strong> your 4 and 5 star recipes get a gentle nudge when you randomize — never enough to make the week feel predictable.</p></div>
+      </section>
+
+      <section class="view" id="shoppingView" data-view-panel="shopping">
+        <div class="shopping-head">
+          <div><div class="eyebrow">WEEK OF AUGUST 3–9</div><h2>Everything for<br /><em>the good part.</em></h2><p id="shoppingSubcopy">Your consolidated list will appear here once meals are chosen.</p></div>
+          <div class="shopping-actions"><button class="button button-light" id="copyShopping">Copy list</button><button class="button button-light" id="printShopping">Print</button><button class="button button-dark" id="emailShopping">Preview & email <span>→</span></button></div>
+        </div>
+
+        <div class="email-strip"><div class="email-strip-icon">✉</div><div><strong>Send a recipe-ready email</strong><span>Shopping list plus ingredients and instructions for every meal.</span></div><label class="email-input"><span>To</span><input id="emailRecipient" type="email" placeholder="her@email.com" /></label></div>
+        <div class="shopping-layout"><div class="shopping-list-card" id="shoppingListCard"></div><div class="recipe-guide" id="recipeGuide"></div></div>
+      </section>
+    </main>
+  </div>
+
+  <div class="modal-backdrop hidden" id="recipeModal" role="dialog" aria-modal="true" aria-labelledby="recipeModalTitle">
+    <div class="modal-card modal-large">
+      <button class="modal-close" data-close-modal="recipeModal" aria-label="Close">×</button>
+      <div class="modal-kicker">NEW TO THE COLLECTION</div><h2 id="recipeModalTitle">Add a recipe</h2><p class="modal-subtitle">A little context now makes future meal planning much easier.</p>
+      <form id="recipeForm">
+        <div class="form-grid two-col"><label>Recipe title<input id="recipeTitle" required placeholder="e.g. Sunday tomato sauce" /></label><label>Import method<select id="recipeSourceType"><option value="manual">Type it in</option><option value="internet">Paste a recipe link</option><option value="cookbook">Read a cookbook scan</option></select></label></div>
+        <div class="form-grid two-col"><label>Source / author<input id="recipeSource" placeholder="e.g. Joanna Gaines or Grandma's recipe box" /></label><div></div></div>
+        <div class="smart-import-row hidden" id="internetImportRow"><label>Recipe link<input id="recipeUrl" type="url" placeholder="https://…" /></label><button type="button" class="button button-light import-button" id="importLink">Read this recipe ↗</button><span class="import-status" id="linkImportStatus"></span></div>
+        <div class="smart-import-row hidden" id="cookbookImportRow"><label>Cookbook<select id="cookbookSelect"></select></label><label>Create a cookbook <span class="optional">optional</span><input id="newCookbookName" placeholder="e.g. Grandma's recipes" /></label></div>
+        <div class="form-grid two-col"><label>Time <span class="optional">optional</span><input id="recipeTime" placeholder="e.g. 35 min" /></label><div></div></div>
+        <div class="form-section-label">Ingredients <span>One per line · amount | unit | ingredient</span></div>
+        <textarea id="recipeIngredients" required rows="6" placeholder="1 | lb | chicken thighs&#10;2 | tbsp | olive oil&#10;1 | | lemon, zested"></textarea>
+        <div class="form-section-label">Instructions <span>One step per line</span></div>
+        <textarea id="recipeInstructions" required rows="5" placeholder="Pat the chicken dry and season generously.&#10;Sear skin-side down until golden.&#10;Finish in the oven and rest before serving."></textarea>
+        <div class="scan-upload" id="scanUpload"><div><strong>Attach a scan or photo</strong><span>Images can be read privately in this browser; PDFs stay attached for reference.</span></div><label class="upload-button">Choose file<input id="recipeScan" type="file" accept="image/*,.pdf" /></label><button type="button" class="button button-light scan-read-button hidden" id="readScan">Read scan ↗</button><span class="file-name" id="recipeScanName">No file attached</span><span class="file-name" id="scanImportStatus"></span></div>
+        <div class="modal-actions"><button type="button" class="button button-ghost" data-close-modal="recipeModal">Cancel</button><button type="submit" class="button button-dark">Save recipe <span>→</span></button></div>
+      </form>
+    </div>
+  </div>
+
+  <div class="modal-backdrop hidden" id="bulkCookbookModal" role="dialog" aria-modal="true" aria-labelledby="bulkCookbookTitle">
+    <div class="modal-card modal-large bulk-cookbook-modal">
+      <button class="modal-close" data-close-modal="bulkCookbookModal" aria-label="Close">×</button>
+      <div class="modal-kicker">COOKBOOK IN ONE PASS</div><h2 id="bulkCookbookTitle">Split a cookbook PDF into recipes.</h2><p class="modal-subtitle">Ladle reads the book privately in this browser, finds the recipe bookmarks, and gives you a reviewable list before anything is added.</p>
+      <div class="bulk-cookbook-fields"><label>Cookbook name<input id="bulkCookbookName" placeholder="e.g. Magnolia Table, Volume 3" /></label><label>PDF book<input id="bulkCookbookFile" type="file" accept="application/pdf,.pdf" /></label></div>
+      <button type="button" class="button button-light bulk-read-button" id="readBulkCookbook">Read and split PDF ↗</button>
+      <div class="bulk-import-status" id="bulkImportStatus">Choose a recipe-book PDF to begin.</div>
+      <div class="bulk-import-summary hidden" id="bulkImportSummary"></div>
+      <div class="bulk-import-list hidden" id="bulkImportList"></div>
+      <div class="modal-actions"><button type="button" class="button button-ghost" data-close-modal="bulkCookbookModal">Cancel</button><button type="button" class="button button-dark" id="importBulkRecipes" disabled>Import selected recipes <span>→</span></button></div>
+    </div>
+  </div>
+
+  <div class="modal-backdrop hidden" id="detailModal" role="dialog" aria-modal="true" aria-labelledby="detailModalTitle"><div class="modal-card detail-modal"><button class="modal-close" data-close-modal="detailModal" aria-label="Close">×</button><div id="detailContent"></div></div></div>
+  <div class="modal-backdrop hidden" id="emailPreviewModal" role="dialog" aria-modal="true" aria-labelledby="emailPreviewTitle"><div class="modal-card email-preview-modal"><button class="modal-close" data-close-modal="emailPreviewModal" aria-label="Close">×</button><div class="modal-kicker">READY TO SEND</div><h2 id="emailPreviewTitle">The week, in one tidy email.</h2><p class="modal-subtitle">This preview follows the shopping list tab. Open it in your mail app, or download the styled HTML / .eml version.</p><div id="emailPreviewContent"></div><div class="modal-actions"><button type="button" class="button button-ghost" data-close-modal="emailPreviewModal">Close</button><button type="button" class="button button-light" id="copyEmailBody">Copy email body</button><button type="button" class="button button-light" id="downloadEmailHtml">Download HTML</button><button type="button" class="button button-light" id="downloadEmailEml">Download .eml for Mail</button><a class="button button-dark" id="openMailApp" href="#">Open in mail app <span>→</span></a></div></div></div>
+  <div class="toast hidden" id="toast"></div>
+  <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+  <script src="supabase-config.js?v=1"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+  <script src="app.js?v=58"></script>
+</body>
+</html>
