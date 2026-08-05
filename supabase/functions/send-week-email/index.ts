@@ -36,6 +36,21 @@ function cleanSingleLine(value: unknown, maxLength: number) {
   return String(value || '').replace(/[\r\n]+/g, ' ').trim().slice(0, maxLength);
 }
 
+function accountEmailFromVerifiedJwt(request: Request) {
+  const authorization = request.headers.get('authorization') || '';
+  const token = authorization.replace(/^Bearer\s+/i, '').trim();
+  const encodedPayload = token.split('.')[1];
+  if (!encodedPayload) return '';
+  try {
+    const base64 = encodedPayload.replace(/-/g, '+').replace(/_/g, '/');
+    const padded = base64.padEnd(base64.length + (4 - base64.length % 4) % 4, '=');
+    const claims = JSON.parse(atob(padded));
+    return cleanSingleLine(claims.email, 254).toLowerCase();
+  } catch {
+    return '';
+  }
+}
+
 Deno.serve(async request => {
   if (request.method === 'OPTIONS') return new Response(null, { status: 204, headers: responseHeaders(request) });
   if (request.method !== 'POST') return json(request, { error: 'Only POST is supported.' }, 405);
@@ -51,11 +66,14 @@ Deno.serve(async request => {
     return json(request, { error: 'The email request was not valid JSON.' }, 400);
   }
 
-  const recipient = cleanSingleLine(payload.recipient, 254).toLowerCase();
+  // The Supabase gateway has already validated this JWT because verify_jwt is
+  // enabled. Use the verified account claim instead of trusting a recipient
+  // address supplied by the browser.
+  const recipient = accountEmailFromVerifiedJwt(request);
   const subject = cleanSingleLine(payload.subject || 'Ladle · Your meal plan', 140);
   const html = String(payload.html || '');
   const text = String(payload.text || '');
-  if (!EMAIL_PATTERN.test(recipient)) return json(request, { error: 'Enter a valid recipient email address.' }, 400);
+  if (!EMAIL_PATTERN.test(recipient)) return json(request, { error: 'Your account email was not available. Sign in again.' }, 401);
   if (!html || html.length > MAX_HTML_LENGTH || !text || text.length > MAX_TEXT_LENGTH) return json(request, { error: 'The meal plan is too large to send.' }, 413);
 
   const resendResponse = await fetch('https://api.resend.com/emails', {
