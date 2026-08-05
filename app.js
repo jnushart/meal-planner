@@ -1543,6 +1543,7 @@ function renderPlanner() {
   const locked = visibleSlots.filter(slot => slot.recipeId && slot.locked).length;
   const picked = visibleSlots.filter(slot => slot.recipeId).length;
   $('lockedCount').textContent = locked;
+  $('progressRing').style.setProperty('--locked-progress', `${targetMeals ? Math.min(100, (locked / targetMeals) * 100) : 0}%`);
   $('plannerSummary').textContent = `${picked} of ${targetMeals} meals picked`;
   $('weekGrid').innerHTML = visibleSlots.map((slot, index) => plannerSlot(slot, index)).join('');
   renderPlannerSearch();
