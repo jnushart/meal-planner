@@ -196,6 +196,9 @@ em { color: var(--terracotta); font-style: normal; }
 .email-preview-recipe .recipe-source { font-size: 9px; }
 .email-preview-recipe p { color: #707970; font-size: 10px; line-height: 1.5; margin: 7px 0 0; }
 .email-preview-recipe ol { margin: 6px 0 0; padding-left: 17px; color: #707970; font-size: 10px; line-height: 1.45; }
+.email-send-status { min-height: 18px; margin-top: 12px; color: var(--sage-deep); font-size: 11px; }
+.email-send-status.error { color: var(--terracotta); }
+.modal-actions button:disabled { cursor: wait; opacity: .62; transform: none; }
 @media (max-width: 760px) { .smart-import-row { grid-template-columns: 1fr; }.scan-read-button { grid-column: 1; grid-row: auto; width: max-content; }.email-preview-body { grid-template-columns: 1fr; }.bulk-cookbook-fields { grid-template-columns: 1fr; } }
 
 .shopping-amount { white-space: pre-line; line-height: 1.2; }
