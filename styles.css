@@ -153,6 +153,10 @@ em { color: var(--terracotta); font-style: normal; }
 .rating-inline button.active { color: var(--yellow); }
 .rating-inline button:hover { color: var(--terracotta); transform: scale(1.1); }
 .rating-inline.compact button { font-size: 11px; }
+.card-action-group { display: flex; align-items: center; gap: 11px; }
+.card-actions .card-delete { color: var(--terracotta); font-weight: 500; }
+.button-danger { background: #fff7f3; border-color: #efd6ce; color: var(--terracotta); }
+.button-danger:hover { background: #ffede7; border-color: var(--terracotta); }
 .smart-import-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 10px; align-items: end; border: 1px solid #dbe4d5; background: #f3f6ef; border-radius: 10px; padding: 11px; margin-top: 13px; }
 .smart-import-row label { min-width: 0; }
 .import-button { height: 38px; }

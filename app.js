@@ -12,6 +12,7 @@ const SUPABASE_PUBLISHABLE_KEY = String(SUPABASE_CONFIG.publishableKey || '');
 const supabaseClient = window.supabase?.createClient && SUPABASE_URL && SUPABASE_PUBLISHABLE_KEY ? window.supabase.createClient(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY) : null;
 const LOCAL_PREVIEW = window.location.protocol === 'file:';
 let currentUser = null;
+let ownerUserId = '';
 let cloudReady = false;
 let cloudSyncTimer = 0;
 const PDF_PARSER_VERSION = 8;
@@ -98,6 +99,7 @@ const save = (key, value) => { localStorage.setItem(key, JSON.stringify(value));
 function load(key, fallback) { try { const value = localStorage.getItem(key); return value ? JSON.parse(value) : fallback; } catch { return fallback; } }
 if (recipesNeedCleanup) save(STORAGE.recipes, recipes);
 function getRecipe(id) { return recipes.find(recipe => recipe.id === id); }
+function canManageRecipes() { return LOCAL_PREVIEW || Boolean(currentUser && ownerUserId && currentUser.id === ownerUserId); }
 function openRecipeImageDB() {
   if (!window.indexedDB) return Promise.resolve(null);
   if (window.__ladleRecipeImageDB) return window.__ladleRecipeImageDB;
@@ -147,6 +149,18 @@ async function clearRecipeImages() {
     try {
       const transaction = db.transaction('images', 'readwrite');
       transaction.objectStore('images').clear();
+      transaction.oncomplete = () => resolve();
+      transaction.onerror = () => resolve();
+    } catch { resolve(); }
+  });
+}
+async function deleteRecipeImage(id) {
+  const db = await openRecipeImageDB();
+  if (!db) return;
+  await new Promise(resolve => {
+    try {
+      const transaction = db.transaction('images', 'readwrite');
+      transaction.objectStore('images').delete(id);
       transaction.oncomplete = () => resolve();
       transaction.onerror = () => resolve();
     } catch { resolve(); }
@@ -230,6 +244,18 @@ async function clearRecipeSources() {
     } catch { resolve(); }
   });
 }
+async function deleteRecipeSource(id) {
+  const db = await openRecipeSourceDB();
+  if (!db) return;
+  await new Promise(resolve => {
+    try {
+      const transaction = db.transaction('sources', 'readwrite');
+      transaction.objectStore('sources').delete(id);
+      transaction.oncomplete = () => resolve();
+      transaction.onerror = () => resolve();
+    } catch { resolve(); }
+  });
+}
 function queueCloudSync(key = '') {
   if (!cloudReady || !currentUser || !supabaseClient) return;
   clearTimeout(cloudSyncTimer);
@@ -239,13 +265,14 @@ function cloudRecipeRow(recipe, userId) {
   const imagePath = recipe.imagePath || (String(recipe.imageUrl || '').startsWith('http') ? recipe.imageUrl : '');
   return {
     id: String(recipe.id),
-    user_id: userId,
+    user_id: recipe.ownerId || userId,
     title: recipe.title || 'Untitled recipe',
     source: recipe.source || '',
     source_type: recipe.sourceType || 'manual',
     cookbook_id: recipe.cookbookId || '',
     cookbook_name: recipe.cookbookName || '',
-    rating: Number(recipe.rating) || 0,
+    // Ratings live in recipe_ratings, keyed by recipe and user.
+    rating: 0,
     prep_time: recipe.time || 'Flexible',
     accent: recipe.accent || 'art-sage',
     tags: Array.isArray(recipe.tags) ? recipe.tags : [],
@@ -260,10 +287,11 @@ function cloudRecipeRow(recipe, userId) {
     parser_version: Number(recipe.parserVersion) || PDF_PARSER_VERSION
   };
 }
-function recipeFromCloudRow(row) {
+function recipeFromCloudRow(row, rating = 0) {
   const imagePath = row.image_path || '';
   return {
     id: row.id,
+    ownerId: row.user_id || '',
     title: row.title || 'Untitled recipe',
     source: row.source || '',
     sourceType: row.source_type || 'manual',
@@ -273,7 +301,7 @@ function recipeFromCloudRow(row) {
     imageUrl: imagePath.startsWith('http') ? imagePath : '',
     imagePath: imagePath.startsWith('http') ? '' : imagePath,
     imageData: '',
-    rating: Number(row.rating) || 0,
+    rating: Number(rating) || 0,
     time: row.prep_time || 'Flexible',
     accent: row.accent || 'art-sage',
     tags: Array.isArray(row.tags) ? row.tags : [],
@@ -305,16 +333,34 @@ async function prepareCloudRecipe(recipe) {
 }
 async function syncRecipesToCloud() {
   if (!currentUser || !supabaseClient) return;
+  const ownedRecipes = recipes.filter(recipe => !recipe.ownerId || recipe.ownerId === currentUser.id).map(recipe => {
+    if (!recipe.ownerId) recipe.ownerId = currentUser.id;
+    return recipe;
+  });
   const prepared = [];
-  for (const recipe of recipes) prepared.push(await prepareCloudRecipe(recipe));
+  for (const recipe of ownedRecipes) prepared.push(await prepareCloudRecipe(recipe));
   const rows = prepared.map(recipe => cloudRecipeRow(recipe, currentUser.id));
+  const { data: existingRows, error: existingError } = await supabaseClient.from('recipes').select('id,user_id').eq('user_id', currentUser.id);
+  if (existingError) throw existingError;
   if (rows.length) {
     const { error } = await supabaseClient.from('recipes').upsert(rows, { onConflict: 'id,user_id' });
     if (error) throw error;
-  } else {
-    const { error } = await supabaseClient.from('recipes').delete().eq('user_id', currentUser.id);
+  }
+  const keepIds = new Set(rows.map(row => row.id));
+  const staleIds = (existingRows || []).map(row => row.id).filter(id => !keepIds.has(id));
+  if (staleIds.length) {
+    const { error } = await supabaseClient.from('recipes').delete().eq('user_id', currentUser.id).in('id', staleIds);
     if (error) throw error;
   }
+}
+async function syncRecipeRatingsToCloud() {
+  if (!currentUser || !supabaseClient) return;
+  const rows = recipes
+    .filter(recipe => Number(recipe.rating) >= 1 && Number(recipe.rating) <= 5)
+    .map(recipe => ({ recipe_id: String(recipe.id), user_id: currentUser.id, rating: Number(recipe.rating), updated_at: new Date().toISOString() }));
+  if (!rows.length) return;
+  const { error } = await supabaseClient.from('recipe_ratings').upsert(rows, { onConflict: 'recipe_id,user_id' });
+  if (error) throw error;
 }
 async function syncCookbooksToCloud() {
   if (!currentUser || !supabaseClient) return;
@@ -331,7 +377,7 @@ async function syncAppStateToCloud() {
 }
 async function syncCloudState() {
   if (!cloudReady || !currentUser || !supabaseClient) return;
-  await Promise.all([syncRecipesToCloud(), syncCookbooksToCloud(), syncAppStateToCloud()]);
+  await Promise.all([syncRecipesToCloud(), syncRecipeRatingsToCloud(), syncCookbooksToCloud(), syncAppStateToCloud()]);
 }
 async function hydrateCloudAssets() {
   if (!supabaseClient) return;
@@ -348,15 +394,25 @@ async function hydrateCloudAssets() {
 }
 async function bootstrapCloud() {
   if (!currentUser || !supabaseClient) return;
-  const [{ data: remoteRecipes, error: recipeError }, { data: remoteCookbooks, error: cookbookError }, { data: remoteState, error: stateError }] = await Promise.all([
-    supabaseClient.from('recipes').select('*').eq('user_id', currentUser.id),
+  const [{ data: remoteRecipes, error: recipeError }, { data: remoteRatings, error: ratingError }, { data: remoteOwner, error: ownerError }, { data: remoteCookbooks, error: cookbookError }, { data: remoteState, error: stateError }] = await Promise.all([
+    supabaseClient.from('recipes').select('*'),
+    supabaseClient.from('recipe_ratings').select('recipe_id,rating').eq('user_id', currentUser.id),
+    supabaseClient.from('app_owners').select('user_id').eq('id', true).maybeSingle(),
     supabaseClient.from('cookbooks').select('*').eq('user_id', currentUser.id),
     supabaseClient.from('app_state').select('*').eq('user_id', currentUser.id).maybeSingle()
   ]);
-  if (recipeError || cookbookError || stateError) throw recipeError || cookbookError || stateError;
+  if (recipeError || ratingError || ownerError || cookbookError || stateError) throw recipeError || ratingError || ownerError || cookbookError || stateError;
+  ownerUserId = remoteOwner?.user_id || '';
+  const ratingMap = new Map((remoteRatings || []).map(row => [String(row.recipe_id), Number(row.rating) || 0]));
+  const legacyRatings = [];
   const hasCloudData = (remoteRecipes || []).length > 0 || (remoteCookbooks || []).length > 0 || !!remoteState;
   if (hasCloudData) {
-    recipes = (remoteRecipes || []).map(recipeFromCloudRow);
+    recipes = (remoteRecipes || []).map(row => {
+      const legacyRating = row.user_id === currentUser.id ? Number(row.rating) || 0 : 0;
+      const rating = ratingMap.has(String(row.id)) ? ratingMap.get(String(row.id)) : legacyRating;
+      if (!ratingMap.has(String(row.id)) && legacyRating) legacyRatings.push({ recipe_id: String(row.id), user_id: currentUser.id, rating: legacyRating, updated_at: new Date().toISOString() });
+      return recipeFromCloudRow(row, rating);
+    });
     cookbooks = (remoteCookbooks || []).map(book => ({ id: book.id, name: book.name }));
     if (remoteState) {
       plan = Array.isArray(remoteState.plan) ? remoteState.plan : plan;
@@ -371,10 +427,16 @@ async function bootstrapCloud() {
     localStorage.setItem(STORAGE.checked, JSON.stringify(checkedItems));
     await hydrateCloudAssets();
   } else {
+    recipes = recipes.map(recipe => ({ ...recipe, ownerId: recipe.ownerId || currentUser.id }));
     cloudReady = true;
     await syncCloudState();
   }
   cloudReady = true;
+  if (legacyRatings.length) {
+    const { error } = await supabaseClient.from('recipe_ratings').upsert(legacyRatings, { onConflict: 'recipe_id,user_id' });
+    if (error) throw error;
+  }
+  $('resetDemo').classList.toggle('hidden', !canManageRecipes());
   renderCookbookOptions();
   render();
 }
@@ -1380,6 +1442,7 @@ async function importBulkRecipes() {
     if (recipe.sourceText) sourceRecords.push({ id, text: recipe.sourceText, title: recipe.title, section: recipe.section, pageStart: recipe.pageStart });
     return {
       id,
+      ownerId: currentUser?.id || '',
       title: recipe.title,
       source: cookbookName,
       sourceType: 'cookbook',
@@ -1424,6 +1487,7 @@ function renderNav() {
   document.querySelectorAll('[data-view-panel]').forEach(panel => panel.classList.toggle('active', panel.dataset.viewPanel === activeView));
   $('recipeCount').textContent = recipes.length;
   $('shoppingDot').classList.toggle('show', plan.some(slot => slot.recipeId));
+  $('resetDemo')?.classList.toggle('hidden', !canManageRecipes());
   const titles = { library: ["What's for dinner?", 'A calmer way to choose the good stuff.'], planner: ['Shape the week.', 'Lock a few keepers, then let chance do the rest.'], shopping: ['Ready when you are.', 'A tidy list for the meals you actually want to make.'] };
   $('pageTitle').textContent = titles[activeView][0];
   $('pageSubtitle').textContent = titles[activeView][1];
@@ -1451,12 +1515,13 @@ function recipeCard(recipe) {
   const sourceLabel = recipe.sourceType === 'cookbook' ? 'Cookbook scan' : recipe.sourceType === 'internet' ? 'Internet recipe' : 'Typed by us';
   const ratingButtons = [1,2,3,4,5].map(value => `<button class="${recipe.rating >= value ? 'active' : ''}" data-action="rate" data-id="${recipe.id}" data-rating="${value}" aria-label="Rate ${value} stars">★</button>`).join('');
   const weekAction = isPlannerMeal(recipe) ? `<button data-action="add-week" data-id="${recipe.id}">＋ Add to week</button>` : '<span class="library-only-label">Library only</span>';
+  const deleteAction = canManageRecipes() ? `<button class="card-delete" data-action="delete-recipe" data-id="${recipe.id}">Delete</button>` : '';
   return `<article class="recipe-card">
     ${recipeArtwork(recipe, 'recipe-art', `<span class="recipe-source-pill">${sourceLabel}</span>`)}
     <div class="recipe-card-body"><h3>${escapeHTML(recipe.title)}</h3><div class="recipe-source">${escapeHTML(recipe.source || 'Personal recipe')}</div>
       <div class="card-meta"><div class="rating-inline" aria-label="${recipe.rating} out of 5 stars">${ratingButtons}</div><span class="time-meta">◷ ${escapeHTML(recipe.time || 'Flexible')}</span></div>
       <div class="ingredient-hint">${recipe.ingredients.slice(0, 3).map(item => escapeHTML(item.name)).join(' · ')}</div>
-      <div class="card-actions"><button class="card-link" data-action="details" data-id="${recipe.id}">View recipe ↗</button>${weekAction}</div>
+      <div class="card-actions"><div class="card-action-group"><button class="card-link" data-action="details" data-id="${recipe.id}">View recipe ↗</button>${deleteAction}</div>${weekAction}</div>
     </div></article>`;
 }
 
@@ -1791,13 +1856,41 @@ function addToWeek(recipeId) {
 }
 
 function rateRecipe(id, rating) { const recipe = getRecipe(id); if (!recipe) return; recipe.rating = rating; save(STORAGE.recipes, recipes); const detailOpen = !$('detailModal').classList.contains('hidden'); render(); if (detailOpen) openDetails(id); showToast(`Saved ${rating} star${rating === 1 ? '' : 's'} for ${recipe.title}.`); }
+async function deleteRecipe(id) {
+  if (!canManageRecipes()) { showToast('Only the kitchen owner can delete recipes.'); return; }
+  const recipe = getRecipe(id); if (!recipe) return;
+  if (!confirm(`Delete “${recipe.title}” from the recipe library?`)) return;
+  if (!LOCAL_PREVIEW && currentUser && supabaseClient) {
+    const { error } = await supabaseClient.from('recipes').delete().eq('id', String(id));
+    if (error) { showToast('That recipe could not be deleted from the cloud.'); return; }
+  }
+  recipes = recipes.filter(item => item.id !== id);
+  plan = plan.map(slot => slot.recipeId === id ? { ...slot, recipeId: null, locked: false } : slot);
+  delete recipeImageCache[id];
+  await Promise.all([deleteRecipeImage(id), deleteRecipeSource(id)]);
+  save(STORAGE.recipes, recipes);
+  save(STORAGE.plan, plan);
+  closeModal('detailModal');
+  render();
+  showToast('Recipe deleted.');
+}
+async function clearCloudRecipesForOwner() {
+  if (LOCAL_PREVIEW || !currentUser || !supabaseClient || !canManageRecipes()) return;
+  const { data: remoteRows, error: readError } = await supabaseClient.from('recipes').select('id');
+  if (readError) throw readError;
+  const ids = (remoteRows || []).map(row => row.id).filter(Boolean);
+  if (!ids.length) return;
+  const { error } = await supabaseClient.from('recipes').delete().in('id', ids);
+  if (error) throw error;
+}
 
 function openDetails(id) {
   const recipe = getRecipe(id); if (!recipe) return;
   const scanLink = recipe.scanData ? `<a class="button button-light" href="${recipe.scanData}" target="_blank" rel="noreferrer">Open attached scan ↗</a>` : recipe.scanFileName ? `<span class="scan-file-meta">Attached scan: ${escapeHTML(recipe.scanFileName)}</span>` : '';
   const weekAction = isPlannerMeal(recipe) ? `<button class="button button-dark" data-action="add-week" data-id="${recipe.id}">＋ Add to week</button>` : '<span class="scan-file-meta">Library only · not a lunch/dinner meal</span>';
+  const deleteAction = canManageRecipes() ? `<button class="button button-danger" data-action="delete-recipe" data-id="${recipe.id}">Delete recipe</button>` : '';
   const sourceLabel = recipe.sourceType === 'cookbook' ? 'Cookbook scan' : recipe.sourceType === 'internet' ? 'Internet recipe' : 'Typed by us';
-  $('detailContent').innerHTML = `${recipeArtwork(recipe, 'detail-art')}<div class="detail-head"><h2 id="detailModalTitle">${escapeHTML(recipe.title)}</h2><span class="recipe-stars">${stars(recipe.rating)}</span></div><div class="detail-source">${escapeHTML(recipe.source || 'Personal recipe')} · ${sourceLabel} · ${escapeHTML(recipe.time || 'Flexible')}</div><div class="detail-columns"><div><h4>Ingredients</h4><ul>${recipe.ingredients.map(item => `<li>${escapeHTML([formatAmount(item.amount), item.unit, item.name].filter(Boolean).join(' '))}</li>`).join('')}</ul></div><div><h4>Instructions</h4><ol>${recipe.instructions.map(step => `<li>${escapeHTML(step)}</li>`).join('')}</ol></div></div><div class="detail-footer"><div class="rating-picker"><span>Rate this recipe</span>${[1,2,3,4,5].map(value => `<button class="${recipe.rating >= value ? 'active' : ''}" data-action="rate" data-id="${recipe.id}" data-rating="${value}">★</button>`).join('')}</div><div class="topbar-actions">${scanLink}${weekAction}</div></div>`;
+  $('detailContent').innerHTML = `${recipeArtwork(recipe, 'detail-art')}<div class="detail-head"><h2 id="detailModalTitle">${escapeHTML(recipe.title)}</h2><span class="recipe-stars">${stars(recipe.rating)}</span></div><div class="detail-source">${escapeHTML(recipe.source || 'Personal recipe')} · ${sourceLabel} · ${escapeHTML(recipe.time || 'Flexible')}</div><div class="detail-columns"><div><h4>Ingredients</h4><ul>${recipe.ingredients.map(item => `<li>${escapeHTML([formatAmount(item.amount), item.unit, item.name].filter(Boolean).join(' '))}</li>`).join('')}</ul></div><div><h4>Instructions</h4><ol>${recipe.instructions.map(step => `<li>${escapeHTML(step)}</li>`).join('')}</ol></div></div><div class="detail-footer"><div class="rating-picker"><span>Rate this recipe</span>${[1,2,3,4,5].map(value => `<button class="${recipe.rating >= value ? 'active' : ''}" data-action="rate" data-id="${recipe.id}" data-rating="${value}">★</button>`).join('')}</div><div class="topbar-actions">${scanLink}${weekAction}${deleteAction}</div></div>`;
   openModal('detailModal');
 }
 
@@ -1839,7 +1932,7 @@ async function handleRecipeSubmit(event) {
   if (scanFile && scanFile.size <= 3000000) {
     try { scanData = await readFileAsDataURL(scanFile); } catch {}
   }
-  const newRecipe = { id: `r${Date.now()}`, title, source, sourceType, cookbookId, sourceUrl: $('recipeUrl').value.trim(), imageUrl: pendingImportedImage, imageData: scanFile?.type?.startsWith('image/') ? scanData : '', rating: 0, time: $('recipeTime').value.trim() || 'Flexible', accent: ACCENTS[recipes.length % ACCENTS.length], ingredients, instructions, scanFileName: scanFile?.name || '', scanData };
+  const newRecipe = { id: `r${Date.now()}`, ownerId: currentUser?.id || '', title, source, sourceType, cookbookId, sourceUrl: $('recipeUrl').value.trim(), imageUrl: pendingImportedImage, imageData: scanFile?.type?.startsWith('image/') ? scanData : '', rating: 0, time: $('recipeTime').value.trim() || 'Flexible', accent: ACCENTS[recipes.length % ACCENTS.length], ingredients, instructions, scanFileName: scanFile?.name || '', scanData };
   recipes = [newRecipe, ...recipes];
   try { save(STORAGE.recipes, recipes); } catch { newRecipe.scanData = ''; newRecipe.imageData = ''; save(STORAGE.recipes, recipes); showToast('Recipe saved; the scan was too large to keep in this browser.'); }
   $('recipeForm').reset(); $('recipeScanName').textContent = 'No file attached'; closeModal('recipeModal'); activeView = 'library'; render(); showToast(scanData ? 'Recipe and scan added to your collection.' : 'Recipe added to your collection.');
@@ -1989,7 +2082,7 @@ document.addEventListener('click', event => {
   const nav = event.target.closest('[data-view]'); if (nav) { activeView = nav.dataset.view; render(); return; }
   const jump = event.target.closest('[data-view-jump]'); if (jump) { activeView = jump.dataset.viewJump; render(); return; }
   const action = event.target.closest('[data-action]');
-  if (action) { const type = action.dataset.action; if (type === 'details') openDetails(action.dataset.id); if (type === 'add-week') { addToWeek(action.dataset.id); if (!$('detailModal').classList.contains('hidden')) closeModal('detailModal'); } if (type === 'toggle-lock') { const slot = plan[Number(action.dataset.index)]; if (slot) { slot.locked = !slot.locked; save(STORAGE.plan, plan); render(); showToast(slot.locked ? 'Meal locked in.' : 'Meal unlocked.'); } } if (type === 'remove-week') { const slot = plan[Number(action.dataset.index)]; if (slot) { slot.recipeId = null; slot.locked = false; save(STORAGE.plan, plan); render(); showToast('Meal removed from the week.'); } } if (type === 'rate') rateRecipe(action.dataset.id, Number(action.dataset.rating)); return; }
+  if (action) { const type = action.dataset.action; if (type === 'details') openDetails(action.dataset.id); if (type === 'add-week') { addToWeek(action.dataset.id); if (!$('detailModal').classList.contains('hidden')) closeModal('detailModal'); } if (type === 'toggle-lock') { const slot = plan[Number(action.dataset.index)]; if (slot) { slot.locked = !slot.locked; save(STORAGE.plan, plan); render(); showToast(slot.locked ? 'Meal locked in.' : 'Meal unlocked.'); } } if (type === 'remove-week') { const slot = plan[Number(action.dataset.index)]; if (slot) { slot.recipeId = null; slot.locked = false; save(STORAGE.plan, plan); render(); showToast('Meal removed from the week.'); } } if (type === 'rate') rateRecipe(action.dataset.id, Number(action.dataset.rating)); if (type === 'delete-recipe') deleteRecipe(action.dataset.id); return; }
   const closer = event.target.closest('[data-close-modal]'); if (closer) closeModal(closer.dataset.closeModal);
 });
 
@@ -2021,7 +2114,7 @@ $('copyEmailBody').addEventListener('click', copyEmailBody);
 $('authForm').addEventListener('submit', requestMagicLink);
 $('profileButton').addEventListener('click', signOutUser);
 $('emailRecipient').value = load(STORAGE.email, ''); $('emailRecipient').addEventListener('input', prepareMailAppLink); $('emailRecipient').addEventListener('change', event => { save(STORAGE.email, event.target.value); prepareMailAppLink(); });
-$('resetDemo').addEventListener('click', async () => { if (!confirm('Clear all saved recipes and this week’s plan?')) return; recipes = []; plan = DAYS.map(day => ({ day, recipeId: null, locked: false })); targetMeals = 5; checkedItems = {}; ['recipes', 'plan', 'target', 'checked'].forEach(key => localStorage.removeItem(STORAGE[key])); save(STORAGE.recipes, recipes); save(STORAGE.plan, plan); save(STORAGE.target, targetMeals); save(STORAGE.checked, checkedItems); await Promise.all([clearRecipeImages(), clearRecipeSources()]); render(); showToast('Recipe library cleared.'); });
+$('resetDemo').addEventListener('click', async () => { if (!canManageRecipes()) { showToast('Only the kitchen owner can clear the recipe library.'); return; } if (!confirm('Clear all saved recipes and this week’s plan?')) return; try { await clearCloudRecipesForOwner(); } catch { showToast('The cloud library could not be cleared.'); return; } recipes = []; plan = DAYS.map(day => ({ day, recipeId: null, locked: false })); targetMeals = 5; checkedItems = {}; ['recipes', 'plan', 'target', 'checked'].forEach(key => localStorage.removeItem(STORAGE[key])); save(STORAGE.recipes, recipes); save(STORAGE.plan, plan); save(STORAGE.target, targetMeals); save(STORAGE.checked, checkedItems); await Promise.all([clearRecipeImages(), clearRecipeSources()]); render(); showToast('Recipe library cleared.'); });
 document.addEventListener('change', event => { if (!event.target.matches('[data-shopping-key]')) return; const key = event.target.dataset.shoppingKey; checkedItems[key] = event.target.checked; save(STORAGE.checked, checkedItems); event.target.closest('.shopping-item').classList.toggle('checked', event.target.checked); renderEmailPreview(); });
 window.addEventListener('storage', event => {
   if (event.key === STORAGE.recipes || event.key === null) recipes = load(STORAGE.recipes, []);
