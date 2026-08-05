@@ -425,11 +425,11 @@ async function bootstrapCloud() {
     supabaseClient.from('cookbooks').select('*').eq('user_id', currentUser.id),
     supabaseClient.from('app_state').select('*').eq('user_id', currentUser.id).maybeSingle()
   ]);
-  if (recipeError || ratingError || ownerError || cookbookError || stateError) throw recipeError || ratingError || ownerError || cookbookError || stateError;
-  ownerUserId = remoteOwner?.user_id || '';
-  const ratingMap = new Map((remoteRatings || []).map(row => [String(row.recipe_id), Number(row.rating) || 0]));
+  if (recipeError) throw recipeError;
+  ownerUserId = remoteOwner?.user_id || ownerUserId;
+  const ratingMap = new Map((ratingError ? [] : (remoteRatings || [])).map(row => [String(row.recipe_id), Number(row.rating) || 0]));
   const legacyRatings = [];
-  const hasCloudData = (remoteRecipes || []).length > 0 || (remoteCookbooks || []).length > 0 || !!remoteState;
+  const hasCloudData = (remoteRecipes || []).length > 0 || (!cookbookError && (remoteCookbooks || []).length > 0) || (!stateError && !!remoteState);
   if (hasCloudData) {
     recipes = (remoteRecipes || []).map(row => {
       const legacyRating = row.user_id === currentUser.id ? Number(row.rating) || 0 : 0;
@@ -437,8 +437,8 @@ async function bootstrapCloud() {
       if (!ratingMap.has(String(row.id)) && legacyRating) legacyRatings.push({ recipe_id: String(row.id), user_id: currentUser.id, rating: legacyRating, updated_at: new Date().toISOString() });
       return recipeFromCloudRow(row, rating);
     });
-    cookbooks = (remoteCookbooks || []).map(book => ({ id: book.id, name: book.name }));
-    if (remoteState) {
+    if (!cookbookError) cookbooks = (remoteCookbooks || []).map(book => ({ id: book.id, name: book.name }));
+    if (!stateError && remoteState) {
       plan = Array.isArray(remoteState.plan) ? remoteState.plan : plan;
       targetMeals = Number(remoteState.target_meals) || targetMeals;
       checkedItems = remoteState.checked_items && typeof remoteState.checked_items === 'object' ? remoteState.checked_items : checkedItems;
