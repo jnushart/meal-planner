@@ -485,6 +485,12 @@ function bindAccountEmail() {
   }
   return email;
 }
+function openPasswordSetupModal() {
+  $('passwordForm')?.reset();
+  const passwordStatus = $('passwordStatus');
+  if (passwordStatus) { passwordStatus.textContent = ''; passwordStatus.classList.remove('error'); }
+  openModal('passwordModal');
+}
 async function handleAuthSession(session, authEvent = '') {
   currentUser = session?.user || null;
   setAuthVisibility(!!currentUser);
@@ -497,10 +503,7 @@ async function handleAuthSession(session, authEvent = '') {
     if ((authEvent === 'PASSWORD_RECOVERY' || passwordRecoveryRequested || passwordRecoverySignalInUrl() || localStorage.getItem(PASSWORD_RECOVERY_KEY) === '1') && !passwordRecoveryModalShown) {
       passwordRecoveryModalShown = true;
       passwordRecoveryRequested = false;
-      $('passwordForm')?.reset();
-      const passwordStatus = $('passwordStatus');
-      if (passwordStatus) { passwordStatus.textContent = ''; passwordStatus.classList.remove('error'); }
-      setTimeout(() => openModal('passwordModal'), 0);
+      setTimeout(openPasswordSetupModal, 0);
     }
   } catch (error) {
     $('authStatus').textContent = `Cloud connection failed: ${error.message || 'Please try again.'}`;
@@ -2258,6 +2261,7 @@ $('copyEmailBody').addEventListener('click', copyEmailBody);
 $('authForm').addEventListener('submit', signInWithPassword);
 $('resetPassword').addEventListener('click', requestPasswordReset);
 $('passwordForm').addEventListener('submit', updatePassword);
+$('changePassword').addEventListener('click', openPasswordSetupModal);
 $('profileButton').addEventListener('click', signOutUser);
 $('emailRecipient').value = load(STORAGE.email, ''); $('emailRecipient').addEventListener('input', prepareMailAppLink); $('emailRecipient').addEventListener('change', prepareMailAppLink);
 $('resetDemo').addEventListener('click', async () => { if (!canManageRecipes()) { showToast('Only the kitchen owner can clear the recipe library.'); return; } if (!confirm('Clear all saved recipes and this week’s plan?')) return; try { await clearCloudRecipesForOwner(); } catch { showToast('The cloud library could not be cleared.'); return; } recipes = []; plan = DAYS.map(day => ({ day, recipeId: null, locked: false })); targetMeals = 5; checkedItems = {}; ['recipes', 'plan', 'target', 'checked'].forEach(key => localStorage.removeItem(STORAGE[key])); save(STORAGE.recipes, recipes); save(STORAGE.plan, plan); save(STORAGE.target, targetMeals); save(STORAGE.checked, checkedItems); await Promise.all([clearRecipeImages(), clearRecipeSources()]); render(); showToast('Recipe library cleared.'); });
