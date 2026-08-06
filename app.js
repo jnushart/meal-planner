@@ -522,8 +522,21 @@ function bindAccountEmail() {
 }
 function openPasswordSetupModal() {
   $('passwordForm')?.reset();
+  ['newPassword', 'confirmPassword'].forEach(id => {
+    const input = $(id);
+    const toggle = document.querySelector(`[data-password-toggle="${id}"]`);
+    if (input) input.type = 'password';
+    if (toggle) { toggle.textContent = 'Show'; toggle.setAttribute('aria-pressed', 'false'); }
+  });
   const passwordStatus = $('passwordStatus');
   if (passwordStatus) { passwordStatus.textContent = ''; passwordStatus.classList.remove('error'); }
+  const title = $('passwordModalTitle');
+  const subtitle = $('passwordModalSubtitle');
+  const repairing = Boolean(currentUser && !passwordRecoveryIsPending());
+  if (title) title.textContent = repairing ? 'Verify your sign-in password.' : 'Choose a password.';
+  if (subtitle) subtitle.textContent = repairing
+    ? 'Enter the password you want to use. Ladle will verify it with a fresh sign-in before saving the result.'
+    : 'Use at least 6 characters. Ladle will verify it before saying it is ready for future sign-ins.';
   openModal('passwordModal');
 }
 function passwordRecoveryIsPending(authEvent = '') {
@@ -562,9 +575,27 @@ async function signInWithPassword(event) {
   if (!supabaseClient) { status.textContent = 'Cloud login is not available yet.'; status.classList.add('error'); return; }
   status.textContent = 'Signing you in…';
   const { error } = await supabaseClient.auth.signInWithPassword({ email, password });
-  if (error) { status.textContent = 'That email and password were not accepted. If this is your first time, use “Set or reset password.”'; status.classList.add('error'); return; }
+  if (error) { status.textContent = 'Supabase rejected that email and password. Use Show to check the exact value, including capitalization and spaces.'; status.classList.add('error'); return; }
   status.textContent = 'Signed in.';
 }
+
+async function verifyPasswordWithFreshSession(email, password) {
+  if (!window.supabase?.createClient || !SUPABASE_URL || !SUPABASE_PUBLISHABLE_KEY) {
+    return { error: new Error('Cloud login is not available yet.') };
+  }
+  const verifier = window.supabase.createClient(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY, {
+    auth: {
+      autoRefreshToken: false,
+      persistSession: false,
+      detectSessionInUrl: false,
+      storageKey: 'ladle-password-verifier-v1'
+    }
+  });
+  const result = await verifier.auth.signInWithPassword({ email, password });
+  try { await verifier.auth.signOut({ scope: 'local' }); } catch {}
+  return result;
+}
+
 async function requestPasswordReset() {
   const email = $('authEmail').value.trim().toLowerCase();
   const status = $('authStatus');
@@ -597,6 +628,20 @@ async function updatePassword(event) {
   status.textContent = 'Saving your password…';
   const { error } = await supabaseClient.auth.updateUser({ password });
   if (error) { status.textContent = error.message; status.classList.add('error'); return; }
+  status.textContent = 'Checking the password with a fresh sign-in…';
+  let verification;
+  try {
+    verification = await verifyPasswordWithFreshSession(getAccountEmail(), password);
+  } catch {
+    status.textContent = 'The password was saved, but the fresh sign-in check could not reach Supabase. Please try the sign-in test again.';
+    status.classList.add('error');
+    return;
+  }
+  if (verification.error) {
+    status.textContent = 'Supabase saved the password change, but rejected the same value during a fresh sign-in check. Use Show and try that exact value again.';
+    status.classList.add('error');
+    return;
+  }
   clearPasswordRecoverySignal();
   $('passwordForm').reset();
   closeModal('passwordModal');
@@ -2268,6 +2313,17 @@ async function sendWeekEmail() {
 function emailShopping() { bindAccountEmail(); const status = $('emailSendStatus'); if (status) { status.textContent = ''; status.classList.remove('error'); } renderEmailPreview(); prepareMailAppLink(); openModal('emailPreviewModal'); }
 
 document.addEventListener('click', event => {
+  const passwordToggle = event.target.closest('[data-password-toggle]');
+  if (passwordToggle) {
+    const input = $(passwordToggle.dataset.passwordToggle);
+    if (input) {
+      const showing = input.type === 'password';
+      input.type = showing ? 'text' : 'password';
+      passwordToggle.textContent = showing ? 'Hide' : 'Show';
+      passwordToggle.setAttribute('aria-pressed', String(showing));
+    }
+    return;
+  }
   const nav = event.target.closest('[data-view]'); if (nav) { activeView = nav.dataset.view; render(); return; }
   const jump = event.target.closest('[data-view-jump]'); if (jump) { activeView = jump.dataset.viewJump; render(); return; }
   const action = event.target.closest('[data-action]');
