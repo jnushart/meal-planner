@@ -362,7 +362,22 @@ async function syncRecipesToCloud() {
     return recipe;
   });
   const prepared = [];
-  for (const recipe of ownedRecipes) prepared.push(await prepareCloudRecipe(recipe));
+  let localRecipesChanged = false;
+  for (const recipe of ownedRecipes) {
+    const preparedRecipe = await prepareCloudRecipe(recipe);
+    if (preparedRecipe.imagePath && preparedRecipe.imagePath !== recipe.imagePath) {
+      recipe.imagePath = preparedRecipe.imagePath;
+      recipe.imageUrl = '';
+      if (recipe.imageData) recipe.imageData = '';
+      localRecipesChanged = true;
+    }
+    if (preparedRecipe.scanPath && preparedRecipe.scanPath !== recipe.scanPath) {
+      recipe.scanPath = preparedRecipe.scanPath;
+      if (recipe.scanData) recipe.scanData = '';
+      localRecipesChanged = true;
+    }
+    prepared.push(preparedRecipe);
+  }
   const rows = prepared.map(recipe => cloudRecipeRow(recipe, currentUser.id));
   const { data: existingRows, error: existingError } = await supabaseClient.from('recipes').select('id,user_id').eq('user_id', currentUser.id);
   if (existingError) throw existingError;
@@ -376,6 +391,7 @@ async function syncRecipesToCloud() {
     const { error } = await supabaseClient.from('recipes').delete().eq('user_id', currentUser.id).in('id', staleIds);
     if (error) throw error;
   }
+  if (localRecipesChanged) localStorage.setItem(STORAGE.recipes, JSON.stringify(recipes));
 }
 async function syncRecipeRatingsToCloud() {
   if (!currentUser || !supabaseClient) return;
@@ -405,15 +421,18 @@ async function syncCloudState() {
 }
 async function hydrateCloudAssets() {
   if (!supabaseClient) return;
-  for (const recipe of recipes) {
-    if (recipe.imagePath) {
-      const { data } = await supabaseClient.storage.from('recipe-assets').createSignedUrl(recipe.imagePath, 3600);
-      if (data?.signedUrl) recipe.imageUrl = data.signedUrl;
-    }
-    if (recipe.scanPath) {
-      const { data } = await supabaseClient.storage.from('recipe-assets').createSignedUrl(recipe.scanPath, 3600);
-      if (data?.signedUrl) recipe.scanData = data.signedUrl;
-    }
+  for (let start = 0; start < recipes.length; start += 20) {
+    const batch = recipes.slice(start, start + 20);
+    await Promise.all(batch.map(async recipe => {
+      if (recipe.imagePath) {
+        const { data } = await supabaseClient.storage.from('recipe-assets').createSignedUrl(recipe.imagePath, 3600);
+        if (data?.signedUrl) recipe.imageUrl = data.signedUrl;
+      }
+      if (recipe.scanPath) {
+        const { data } = await supabaseClient.storage.from('recipe-assets').createSignedUrl(recipe.scanPath, 3600);
+        if (data?.signedUrl) recipe.scanData = data.signedUrl;
+      }
+    }));
   }
 }
 async function bootstrapCloud() {
@@ -429,13 +448,23 @@ async function bootstrapCloud() {
   ownerUserId = remoteOwner?.user_id || ownerUserId;
   const ratingMap = new Map((ratingError ? [] : (remoteRatings || [])).map(row => [String(row.recipe_id), Number(row.rating) || 0]));
   const legacyRatings = [];
+  const localRecipesById = new Map(recipes.map(recipe => [String(recipe.id), recipe]));
+  const needsImageBackfill = (remoteRecipes || []).some(row => {
+    if (row.image_path || row.user_id !== currentUser.id) return false;
+    const localRecipe = localRecipesById.get(String(row.id));
+    return Boolean(recipeImageCache[row.id] || localRecipe?.imageData || localRecipe?.imageUrl);
+  });
   const hasCloudData = (remoteRecipes || []).length > 0 || (!cookbookError && (remoteCookbooks || []).length > 0) || (!stateError && !!remoteState);
   if (hasCloudData) {
     recipes = (remoteRecipes || []).map(row => {
       const legacyRating = row.user_id === currentUser.id ? Number(row.rating) || 0 : 0;
       const rating = ratingMap.has(String(row.id)) ? ratingMap.get(String(row.id)) : legacyRating;
       if (!ratingMap.has(String(row.id)) && legacyRating) legacyRatings.push({ recipe_id: String(row.id), user_id: currentUser.id, rating: legacyRating, updated_at: new Date().toISOString() });
-      return recipeFromCloudRow(row, rating);
+      const recipe = recipeFromCloudRow(row, rating);
+      const localRecipe = localRecipesById.get(String(row.id));
+      if (!recipe.imagePath && !recipe.imageUrl && localRecipe?.imagePath) recipe.imagePath = localRecipe.imagePath;
+      if (!recipe.imagePath && !recipe.imageUrl && localRecipe?.imageUrl) recipe.imageUrl = localRecipe.imageUrl;
+      return recipe;
     });
     if (!cookbookError) cookbooks = (remoteCookbooks || []).map(book => ({ id: book.id, name: book.name }));
     if (!stateError && remoteState) {
@@ -450,6 +479,10 @@ async function bootstrapCloud() {
     localStorage.setItem(STORAGE.target, JSON.stringify(targetMeals));
     localStorage.setItem(STORAGE.checked, JSON.stringify(checkedItems));
     await hydrateCloudAssets();
+    if (needsImageBackfill) {
+      await syncRecipesToCloud();
+      await hydrateCloudAssets();
+    }
   } else {
     recipes = recipes.map(recipe => ({ ...recipe, ownerId: recipe.ownerId || currentUser.id }));
     cloudReady = true;
