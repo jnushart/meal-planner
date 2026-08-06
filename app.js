@@ -555,7 +555,7 @@ async function handleAuthSession(session, authEvent = '') {
 }
 async function signInWithPassword(event) {
   event.preventDefault();
-  const email = $('authEmail').value.trim();
+  const email = $('authEmail').value.trim().toLowerCase();
   const password = $('authPassword').value;
   const status = $('authStatus');
   status.classList.remove('error');
@@ -566,7 +566,7 @@ async function signInWithPassword(event) {
   status.textContent = 'Signed in.';
 }
 async function requestPasswordReset() {
-  const email = $('authEmail').value.trim();
+  const email = $('authEmail').value.trim().toLowerCase();
   const status = $('authStatus');
   status.classList.remove('error');
   if (!email) { status.textContent = 'Enter your account email first.'; status.classList.add('error'); $('authEmail').focus(); return; }
