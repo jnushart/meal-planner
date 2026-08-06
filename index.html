@@ -19,7 +19,7 @@
       <p>Sign in with the email address and password for your invited account.</p>
       <form id="authForm" class="auth-form">
         <label>Email address<input id="authEmail" type="email" autocomplete="email" placeholder="you@example.com" required /></label>
-        <label>Password<input id="authPassword" type="password" autocomplete="current-password" minlength="6" placeholder="Your password" required /></label>
+        <label>Password<span class="password-input"><input id="authPassword" type="password" autocomplete="current-password" minlength="6" placeholder="Your password" required /><button type="button" class="password-toggle" data-password-toggle="authPassword" aria-pressed="false">Show</button></span></label>
         <button class="button button-dark" type="submit">Sign in <span>→</span></button>
         <button class="text-button auth-reset-button" id="resetPassword" type="button">Set or reset password</button>
       </form>
@@ -175,10 +175,10 @@
   <div class="modal-backdrop hidden" id="passwordModal" role="dialog" aria-modal="true" aria-labelledby="passwordModalTitle">
     <div class="modal-card">
       <button class="modal-close" data-close-modal="passwordModal" aria-label="Close">×</button>
-      <div class="modal-kicker">ACCOUNT SECURITY</div><h2 id="passwordModalTitle">Choose a password.</h2><p class="modal-subtitle">Use at least 6 characters. You’ll use it for future sign-ins.</p>
+      <div class="modal-kicker">ACCOUNT SECURITY</div><h2 id="passwordModalTitle">Choose a password.</h2><p class="modal-subtitle" id="passwordModalSubtitle">Use at least 6 characters. Ladle will verify it before saying it is ready for future sign-ins.</p>
       <form id="passwordForm" class="auth-form">
-        <label>New password<input id="newPassword" type="password" autocomplete="new-password" minlength="6" required /></label>
-        <label>Confirm password<input id="confirmPassword" type="password" autocomplete="new-password" minlength="6" required /></label>
+        <label>New password<span class="password-input"><input id="newPassword" type="password" autocomplete="new-password" minlength="6" required /><button type="button" class="password-toggle" data-password-toggle="newPassword" aria-pressed="false">Show</button></span></label>
+        <label>Confirm password<span class="password-input"><input id="confirmPassword" type="password" autocomplete="new-password" minlength="6" required /><button type="button" class="password-toggle" data-password-toggle="confirmPassword" aria-pressed="false">Show</button></span></label>
         <div class="password-status" id="passwordStatus" role="status"></div>
         <div class="modal-actions"><button type="button" class="button button-ghost" data-close-modal="passwordModal">Cancel</button><button type="submit" class="button button-dark">Save password <span>→</span></button></div>
       </form>
@@ -192,6 +192,6 @@
   <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
   <script src="supabase-config.js?v=1"></script>
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
-  <script src="app.js?v=75"></script>
+  <script src="app.js?v=76"></script>
 </body>
 </html>
