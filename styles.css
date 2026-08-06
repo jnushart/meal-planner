@@ -29,6 +29,13 @@ button { cursor: pointer; }
 .auth-form { display: grid; gap: 13px; }
 .auth-form label { display: grid; gap: 6px; color: var(--muted); font-size: 10px; font-weight: 700; }
 .auth-form input { width: 100%; border: 1px solid var(--line); border-radius: 8px; outline: 0; color: var(--ink); background: #fff; padding: 12px 11px; font-size: 13px; font-weight: 400; }
+.password-input { display: flex; align-items: center; gap: 7px; width: 100%; border: 1px solid var(--line); border-radius: 8px; background: #fff; padding-right: 8px; }
+.password-input:focus-within { border-color: var(--sage-deep); box-shadow: 0 0 0 3px rgba(155,174,143,.17); }
+.password-input input { flex: 1; min-width: 0; border: 0; padding-right: 2px; }
+.password-input input:focus { border-color: transparent; box-shadow: none; }
+.password-toggle { border: 0; background: transparent; color: var(--sage-deep); font-size: 10px; font-weight: 700; padding: 4px 2px; }
+.password-toggle:hover { color: var(--terracotta); }
+.password-input input:focus { border-color: transparent !important; box-shadow: none !important; }
 .auth-form input:focus { border-color: var(--sage-deep); box-shadow: 0 0 0 3px rgba(155,174,143,.17); }
 .auth-form .button { justify-content: center; }
 .auth-reset-button { justify-self: start; padding: 2px 0; }
