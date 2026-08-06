@@ -449,11 +449,11 @@ async function bootstrapCloud() {
   const ratingMap = new Map((ratingError ? [] : (remoteRatings || [])).map(row => [String(row.recipe_id), Number(row.rating) || 0]));
   const legacyRatings = [];
   const localRecipesById = new Map(recipes.map(recipe => [String(recipe.id), recipe]));
-  const needsImageBackfill = (remoteRecipes || []).some(row => {
+  const imageBackfillCount = (remoteRecipes || []).filter(row => {
     if (row.image_path || row.user_id !== currentUser.id) return false;
     const localRecipe = localRecipesById.get(String(row.id));
     return Boolean(recipeImageCache[row.id] || localRecipe?.imageData || localRecipe?.imageUrl);
-  });
+  }).length;
   const hasCloudData = (remoteRecipes || []).length > 0 || (!cookbookError && (remoteCookbooks || []).length > 0) || (!stateError && !!remoteState);
   if (hasCloudData) {
     recipes = (remoteRecipes || []).map(row => {
@@ -479,9 +479,11 @@ async function bootstrapCloud() {
     localStorage.setItem(STORAGE.target, JSON.stringify(targetMeals));
     localStorage.setItem(STORAGE.checked, JSON.stringify(checkedItems));
     await hydrateCloudAssets();
-    if (needsImageBackfill) {
+    if (imageBackfillCount) {
+      showToast(`Syncing ${imageBackfillCount} recipe photos to the cloud…`);
       await syncRecipesToCloud();
       await hydrateCloudAssets();
+      showToast('Recipe photos are now available on your other devices.');
     }
   } else {
     recipes = recipes.map(recipe => ({ ...recipe, ownerId: recipe.ownerId || currentUser.id }));
